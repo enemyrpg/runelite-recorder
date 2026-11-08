@@ -176,6 +176,49 @@
     "runelite_audio_app": {
       "label": "RuneLite Audio Application",
       "description": "Application name for gpu-screen-recorder app audio. Empty = detect automatically (first name matching runelite, java or openjdk in gpu-screen-recorder --list-application-audio)."
+    },
+    "hide_when_not_running": {
+      "label": "Hide Widget Without RuneLite",
+      "description": "Hide the bar widget while no RuneLite session runs."
+    },
+    "left_click": {
+      "label": "Left Click"
+    },
+    "right_click": {
+      "label": "Right Click"
+    },
+    "middle_click": {
+      "label": "Middle Click"
+    },
+    "click": {
+      "options": {
+        "select_session": "Choose session",
+        "save_replay": "Save replay",
+        "toggle_replay": "Start/stop replay buffer",
+        "toggle_recording": "Start/stop recording",
+        "none": "Nothing"
+      }
+    },
+    "glyph_unavailable": {
+      "label": "Glyph: Unavailable",
+      "description": "Shown when gpu-screen-recorder or Hyprland is not available."
+    },
+    "glyph_no_runelite": {
+      "label": "Glyph: No RuneLite",
+      "description": "Shown when no RuneLite session runs (if the widget is not hidden)."
+    },
+    "glyph_ready": {
+      "label": "Glyph: Ready"
+    },
+    "glyph_starting": {
+      "label": "Glyph: Starting",
+      "description": "Shown while a capture starts or stops."
+    },
+    "glyph_recording": {
+      "label": "Glyph: Recording"
+    },
+    "glyph_replaying": {
+      "label": "Glyph: Replay Buffer"
     }
   },
   "notify": {
@@ -216,5 +259,30 @@
     "save-replay": "Save replay",
     "recording-here": "Recording this session",
     "select-hint": "Click a session to record it"
+  },
+  "widget": {
+    "state": {
+      "unavailable": "Unavailable",
+      "no_runelite": "No RuneLite running",
+      "ready": "Ready",
+      "starting": "Starting…",
+      "recording": "Recording",
+      "replaying": "Replay buffer"
+    },
+    "tooltip": {
+      "state": "State",
+      "character": "Character",
+      "replay-length": "Replay length",
+      "audio": "Audio",
+      "sessions": "Sessions",
+      "picker": "Portal picker"
+    },
+    "seconds": "{seconds} s",
+    "picker-missing": "Not set up (run setup-picker)"
+  },
+  "shortcut": {
+    "replay": "RuneLite Replay",
+    "replay-active": "Replay On",
+    "recording": "Recording"
   }
 }

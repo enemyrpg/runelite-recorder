@@ -309,6 +309,93 @@ min = 1
 max = 30
 visible_when = { key = "on_resize", values = ["restart"] }
 
+# ── Bar widget ───────────────────────────────────────────────────────────────
+
+[[setting]]
+key = "hide_when_not_running"
+type = "bool"
+label_key = "settings.hide_when_not_running.label"
+description_key = "settings.hide_when_not_running.description"
+default = true
+
+[[setting]]
+key = "left_click"
+type = "select"
+label_key = "settings.left_click.label"
+default = "select_session"
+options = [
+  { value = "select_session", label_key = "settings.click.options.select_session" },
+  { value = "save_replay", label_key = "settings.click.options.save_replay" },
+  { value = "toggle_replay", label_key = "settings.click.options.toggle_replay" },
+  { value = "toggle_recording", label_key = "settings.click.options.toggle_recording" },
+  { value = "none", label_key = "settings.click.options.none" },
+]
+
+[[setting]]
+key = "right_click"
+type = "select"
+label_key = "settings.right_click.label"
+default = "save_replay"
+options = [
+  { value = "select_session", label_key = "settings.click.options.select_session" },
+  { value = "save_replay", label_key = "settings.click.options.save_replay" },
+  { value = "toggle_replay", label_key = "settings.click.options.toggle_replay" },
+  { value = "toggle_recording", label_key = "settings.click.options.toggle_recording" },
+  { value = "none", label_key = "settings.click.options.none" },
+]
+
+[[setting]]
+key = "middle_click"
+type = "select"
+label_key = "settings.middle_click.label"
+default = "toggle_replay"
+options = [
+  { value = "select_session", label_key = "settings.click.options.select_session" },
+  { value = "save_replay", label_key = "settings.click.options.save_replay" },
+  { value = "toggle_replay", label_key = "settings.click.options.toggle_replay" },
+  { value = "toggle_recording", label_key = "settings.click.options.toggle_recording" },
+  { value = "none", label_key = "settings.click.options.none" },
+]
+
+[[setting]]
+key = "glyph_unavailable"
+type = "glyph"
+label_key = "settings.glyph_unavailable.label"
+description_key = "settings.glyph_unavailable.description"
+default = "video-off"
+
+[[setting]]
+key = "glyph_no_runelite"
+type = "glyph"
+label_key = "settings.glyph_no_runelite.label"
+description_key = "settings.glyph_no_runelite.description"
+default = "device-gamepad-2"
+
+[[setting]]
+key = "glyph_ready"
+type = "glyph"
+label_key = "settings.glyph_ready.label"
+default = "video"
+
+[[setting]]
+key = "glyph_starting"
+type = "glyph"
+label_key = "settings.glyph_starting.label"
+description_key = "settings.glyph_starting.description"
+default = "video"
+
+[[setting]]
+key = "glyph_recording"
+type = "glyph"
+label_key = "settings.glyph_recording.label"
+default = "player-record-filled"
+
+[[setting]]
+key = "glyph_replaying"
+type = "glyph"
+label_key = "settings.glyph_replaying.label"
+default = "repeat"
+
 # ── Session discovery ────────────────────────────────────────────────────────
 
 [[setting]]
@@ -343,3 +430,18 @@ height = 360
 placement = "attached"
 position = "auto"
 open_near_click = true
+
+# Bar tile. Thin presentation: mirrors "status", drives the service via "command".
+[[widget]]
+id = "recorder"
+entry = "widget.luau"
+
+# "none" lets middle clicks reach onMiddleClick; the host default
+# (settings-open-widget) would swallow them. User bindings still win.
+[widget.actions]
+middle = "none"
+
+# Control-center quick tile: left toggles the replay buffer, right saves it.
+[[shortcut]]
+id = "toggle"
+entry = "shortcut.luau"
