@@ -6,6 +6,8 @@
 -- The picker is copied to the plugin data dir so its path stays stable no matter
 -- how the plugin is installed.
 
+local scripts = require("./scripts.luau")
+
 local M = {}
 
 local REQUEST_CLEANUP_MS = 20000
@@ -29,34 +31,17 @@ function M.debugLogPath()
     return `{runtimeDir()}/runelite-recorder-picker.log`
 end
 
+local PICKER_NAME = "runelite-share-picker"
+
 -- Path of the installed picker, inside the plugin data dir.
 function M.installedPath(dataDir)
-    return `{dataDir}/bin/runelite-share-picker`
+    return scripts.installedPath(dataDir, PICKER_NAME)
 end
 
 -- Copy the bundled picker to the data dir when it is missing or outdated.
 -- callback(ok, err)
 function M.install(dataDir, callback)
-    local source, err = noctalia.readFile("scripts/runelite-share-picker")
-    if source == nil then
-        callback(false, `could not read bundled picker: {err or "?"}`)
-        return
-    end
-    local target = M.installedPath(dataDir)
-    noctalia.mkdirAll(`{dataDir}/bin`)
-    if noctalia.readFile(target) ~= source then
-        local ok, werr = noctalia.writeFile(target, source)
-        if not ok then
-            callback(false, `could not install picker: {werr or "?"}`)
-            return
-        end
-    end
-    local launched = noctalia.runAsync({ "chmod", "755", target }, function(result)
-        callback(result.exitCode == 0, if result.exitCode == 0 then nil else "chmod failed on picker")
-    end, 5000)
-    if not launched then
-        callback(false, "could not launch chmod")
-    end
+    scripts.install(dataDir, PICKER_NAME, callback)
 end
 
 -- Write a one-shot request for one session. Returns the request key.
