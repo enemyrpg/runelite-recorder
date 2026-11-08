@@ -20,7 +20,7 @@ anything else).
 ## Requirements
 
 - **Hyprland.** Windows are found with `hyprctl`; other compositors are not supported.
-- **[gpu-screen-recorder](https://git.dec05eba.com/gpu-screen-recorder/about/)**, native
+- **[`gpu-screen-recorder`](https://git.dec05eba.com/gpu-screen-recorder/about/)**, native
   (not the Flatpak). `gsr-cli` (shipped with it) is used to save replays and get
   the saved file's path; without it, signals are used instead.
 - **xdg-desktop-portal-hyprland** (xdph) for window capture.

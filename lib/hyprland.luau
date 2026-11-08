@@ -230,12 +230,12 @@ function M.listSessions(opts, callback)
     end
 
     runJson({ "hyprctl", "-j", "clients" }, function(value, err)
-        if value == nil then fail(err) return end
+        if value == nil then fail(err); return end
         clients = value
         finish()
     end)
     runJson({ "hyprctl", "-j", "monitors" }, function(value, err)
-        if value == nil then fail(err) return end
+        if value == nil then fail(err); return end
         monitors = value
         finish()
     end)
