@@ -7,6 +7,139 @@
     "exclude_title": {
       "label": "Excluded window titles",
       "description": "Extended regular expression (case-insensitive). Windows whose title matches are ignored, such as the RuneLite splash screen."
+    },
+    "directory": {
+      "label": "Output Directory",
+      "description": "Where recordings and replays are saved. Defaults to ~/Videos/RuneLite when empty."
+    },
+    "filename_pattern": {
+      "label": "Recording Filename Pattern",
+      "description": "strftime pattern without extension. {character} is replaced with the character name, or \"unknown\" when not logged in."
+    },
+    "copy_to_clipboard": {
+      "label": "Copy Path to Clipboard"
+    },
+    "replay_duration": {
+      "label": "Replay Seconds"
+    },
+    "replay_storage": {
+      "label": "Replay Storage",
+      "options": {
+        "ram": "RAM",
+        "disk": "Disk"
+      }
+    },
+    "frame_rate": {
+      "label": "Frame Rate"
+    },
+    "frame_rate_mode": {
+      "label": "Frame Rate Mode",
+      "options": {
+        "vfr": "Variable (VFR)",
+        "cfr": "Constant (CFR)"
+      }
+    },
+    "video_codec": {
+      "label": "Video Codec",
+      "options": {
+        "h264": "H.264",
+        "hevc": "HEVC",
+        "av1": "AV1",
+        "vp8": "VP8",
+        "vp9": "VP9"
+      }
+    },
+    "video_encoder": {
+      "label": "Video Encoder",
+      "description": "CPU encoding only supports H.264, GPU is hardware-accelerated",
+      "options": {
+        "gpu": "GPU",
+        "cpu": "CPU"
+      }
+    },
+    "video_bitrate_mode": {
+      "label": "Bitrate Mode",
+      "options": {
+        "qp": "Constant Quality (QP)",
+        "vbr": "Variable Bitrate (VBR)",
+        "cbr": "Constant Bitrate (CBR)"
+      }
+    },
+    "video_qp": {
+      "label": "Video Quality (QP)",
+      "description": "Lower values produce higher quality and larger files"
+    },
+    "video_quality": {
+      "label": "Video Quality",
+      "options": {
+        "medium": "Medium",
+        "high": "High",
+        "very_high": "Very High",
+        "ultra": "Ultra"
+      }
+    },
+    "video_bitrate": {
+      "label": "Video Bitrate (kbps)",
+      "description": "Positive integer bitrate in kbps used for CBR mode"
+    },
+    "resolution": {
+      "label": "Resolution",
+      "description": "\"original\" or WIDTHxHEIGHT, e.g. 1920x1080"
+    },
+    "show_cursor": {
+      "label": "Show Cursor"
+    },
+    "color_range": {
+      "label": "Color Range",
+      "options": {
+        "limited": "Limited",
+        "full": "Full"
+      }
+    },
+    "audio_source": {
+      "label": "Audio Source",
+      "options": {
+        "default_output": "System Output",
+        "default_input": "Microphone",
+        "both": "Output + Microphone",
+        "custom": "Custom",
+        "none": "No Audio"
+      }
+    },
+    "custom_audio_sources": {
+      "label": "Custom Audio Sources",
+      "description": "Comma-separated gpu-screen-recorder audio sources, e.g. app:java or default_output."
+    },
+    "audio_codec": {
+      "label": "Audio Codec",
+      "options": {
+        "opus": "Opus",
+        "aac": "AAC",
+        "flac": "FLAC"
+      }
+    },
+    "audio_bitrate": {
+      "label": "Audio Bitrate (kbps)",
+      "description": "0 = automatic (128 for Opus/FLAC, 160 for AAC)"
     }
+  },
+  "notify": {
+    "launch-failed": "Could not launch gpu-screen-recorder",
+    "no-session": "No RuneLite session to record",
+    "not-replaying": "Replay buffer is not running",
+    "picker-configured": "Portal picker configured",
+    "picker-configured-body": "Run: systemctl --user restart xdg-desktop-portal-hyprland",
+    "picker-missing": "RuneLite Recorder: portal picker not set up",
+    "picker-missing-body": "The window will be chosen in the portal dialog. Run: noctalia msg plugin fredrikj/runelite-recorder:service all setup-picker",
+    "picker-setup-failed": "Could not configure the portal picker",
+    "recording-failed": "Recording failed",
+    "recording-saved": "Recording saved",
+    "replay-active": "Replay buffer active",
+    "replay-failed": "Replay buffer failed",
+    "replay-saved": "Replay saved",
+    "replay-stopped": "Replay buffer stopped",
+    "save-failed": "Could not save replay",
+    "stopped-early": "gpu-screen-recorder exited unexpectedly. Check the Noctalia log for details.",
+    "unavailable": "gpu-screen-recorder or Hyprland is not available"
   }
 }

@@ -18,6 +18,202 @@ tags = ["recording", "video", "gaming", "hyprland"]
 icon = "video"
 description = "Replay buffer and recording of the RuneLite window with gpu-screen-recorder (Hyprland)."
 
+# ── Output ───────────────────────────────────────────────────────────────────
+
+[[setting]]
+key = "directory"
+type = "folder"
+label_key = "settings.directory.label"
+description_key = "settings.directory.description"
+default = "~/Videos/RuneLite"
+
+[[setting]]
+key = "filename_pattern"
+type = "string"
+label_key = "settings.filename_pattern.label"
+description_key = "settings.filename_pattern.description"
+default = "runelite_{character}_%Y%m%d_%H%M%S"
+
+[[setting]]
+key = "copy_to_clipboard"
+type = "bool"
+label_key = "settings.copy_to_clipboard.label"
+default = false
+
+# ── Replay buffer ────────────────────────────────────────────────────────────
+
+[[setting]]
+key = "replay_duration"
+type = "int"
+label_key = "settings.replay_duration.label"
+default = 30
+min = 5
+max = 3600
+
+[[setting]]
+key = "replay_storage"
+type = "select"
+label_key = "settings.replay_storage.label"
+default = "ram"
+options = [
+  { value = "ram", label_key = "settings.replay_storage.options.ram" },
+  { value = "disk", label_key = "settings.replay_storage.options.disk" },
+]
+
+# ── Video ────────────────────────────────────────────────────────────────────
+
+[[setting]]
+key = "frame_rate"
+type = "int"
+label_key = "settings.frame_rate.label"
+default = 60
+min = 1
+max = 240
+
+[[setting]]
+key = "frame_rate_mode"
+type = "select"
+label_key = "settings.frame_rate_mode.label"
+default = "vfr"
+options = [
+  { value = "vfr", label_key = "settings.frame_rate_mode.options.vfr" },
+  { value = "cfr", label_key = "settings.frame_rate_mode.options.cfr" },
+]
+
+[[setting]]
+key = "video_codec"
+type = "select"
+label_key = "settings.video_codec.label"
+default = "h264"
+options = [
+  { value = "h264", label_key = "settings.video_codec.options.h264" },
+  { value = "hevc", label_key = "settings.video_codec.options.hevc" },
+  { value = "av1", label_key = "settings.video_codec.options.av1" },
+  { value = "vp8", label_key = "settings.video_codec.options.vp8" },
+  { value = "vp9", label_key = "settings.video_codec.options.vp9" },
+]
+
+[[setting]]
+key = "video_encoder"
+type = "select"
+label_key = "settings.video_encoder.label"
+description_key = "settings.video_encoder.description"
+default = "gpu"
+options = [
+  { value = "gpu", label_key = "settings.video_encoder.options.gpu" },
+  { value = "cpu", label_key = "settings.video_encoder.options.cpu" },
+]
+
+[[setting]]
+key = "video_bitrate_mode"
+type = "select"
+label_key = "settings.video_bitrate_mode.label"
+default = "qp"
+options = [
+  { value = "qp", label_key = "settings.video_bitrate_mode.options.qp" },
+  { value = "vbr", label_key = "settings.video_bitrate_mode.options.vbr" },
+  { value = "cbr", label_key = "settings.video_bitrate_mode.options.cbr" },
+]
+
+[[setting]]
+key = "video_qp"
+type = "int"
+label_key = "settings.video_qp.label"
+description_key = "settings.video_qp.description"
+default = 25
+min = 0
+max = 51
+visible_when = { key = "video_bitrate_mode", values = ["qp"] }
+
+[[setting]]
+key = "video_quality"
+type = "select"
+label_key = "settings.video_quality.label"
+default = "very_high"
+options = [
+  { value = "medium", label_key = "settings.video_quality.options.medium" },
+  { value = "high", label_key = "settings.video_quality.options.high" },
+  { value = "very_high", label_key = "settings.video_quality.options.very_high" },
+  { value = "ultra", label_key = "settings.video_quality.options.ultra" },
+]
+visible_when = { key = "video_bitrate_mode", values = ["vbr"] }
+
+[[setting]]
+key = "video_bitrate"
+type = "string"
+label_key = "settings.video_bitrate.label"
+description_key = "settings.video_bitrate.description"
+default = "20000"
+visible_when = { key = "video_bitrate_mode", values = ["cbr"] }
+
+[[setting]]
+key = "resolution"
+type = "string"
+label_key = "settings.resolution.label"
+description_key = "settings.resolution.description"
+default = "original"
+
+[[setting]]
+key = "show_cursor"
+type = "bool"
+label_key = "settings.show_cursor.label"
+default = true
+
+[[setting]]
+key = "color_range"
+type = "select"
+label_key = "settings.color_range.label"
+default = "limited"
+options = [
+  { value = "limited", label_key = "settings.color_range.options.limited" },
+  { value = "full", label_key = "settings.color_range.options.full" },
+]
+
+# ── Audio ────────────────────────────────────────────────────────────────────
+
+[[setting]]
+key = "audio_source"
+type = "select"
+label_key = "settings.audio_source.label"
+default = "default_output"
+options = [
+  { value = "default_output", label_key = "settings.audio_source.options.default_output" },
+  { value = "default_input", label_key = "settings.audio_source.options.default_input" },
+  { value = "both", label_key = "settings.audio_source.options.both" },
+  { value = "custom", label_key = "settings.audio_source.options.custom" },
+  { value = "none", label_key = "settings.audio_source.options.none" },
+]
+
+[[setting]]
+key = "custom_audio_sources"
+type = "string"
+label_key = "settings.custom_audio_sources.label"
+description_key = "settings.custom_audio_sources.description"
+default = ""
+visible_when = { key = "audio_source", values = ["custom"] }
+
+[[setting]]
+key = "audio_codec"
+type = "select"
+label_key = "settings.audio_codec.label"
+default = "opus"
+options = [
+  { value = "opus", label_key = "settings.audio_codec.options.opus" },
+  { value = "aac", label_key = "settings.audio_codec.options.aac" },
+  { value = "flac", label_key = "settings.audio_codec.options.flac" },
+]
+visible_when = { key = "audio_source", values = ["default_output", "default_input", "both", "custom"] }
+
+[[setting]]
+key = "audio_bitrate"
+type = "int"
+label_key = "settings.audio_bitrate.label"
+description_key = "settings.audio_bitrate.description"
+default = 0
+min = 0
+max = 512
+visible_when = { key = "audio_source", values = ["default_output", "default_input", "both", "custom"] }
+
 # ── Session discovery ────────────────────────────────────────────────────────
 
 [[setting]]
