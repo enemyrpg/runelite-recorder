@@ -99,6 +99,8 @@
     "audio_source": {
       "label": "Audio Source",
       "options": {
+        "runelite": "RuneLite Only",
+        "runelite_mic": "RuneLite + Microphone",
         "default_output": "System Output",
         "default_input": "Microphone",
         "both": "Output + Microphone",
@@ -170,6 +172,10 @@
     "post_save_script": {
       "label": "Post-save Script",
       "description": "Executable run after a clip is saved and renamed, with the final path and the type (replay or regular) as arguments."
+    },
+    "runelite_audio_app": {
+      "label": "RuneLite Audio Application",
+      "description": "Application name for gpu-screen-recorder app audio. Empty = detect automatically (first name matching runelite, java or openjdk in gpu-screen-recorder --list-application-audio)."
     }
   },
   "notify": {
@@ -191,7 +197,8 @@
     "stopped-early": "gpu-screen-recorder exited unexpectedly. Check the Noctalia log for details.",
     "unavailable": "gpu-screen-recorder or Hyprland is not available",
     "restarted-after-resize": "Recording restarted after resize",
-    "stopped-after-resize": "Recording stopped: RuneLite window was resized"
+    "stopped-after-resize": "Recording stopped: RuneLite window was resized",
+    "restarted-settings": "Replay buffer restarted with new settings"
   },
   "panel": {
     "title": "RuneLite Sessions",

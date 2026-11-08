@@ -318,9 +318,74 @@ end
 
 -- ── Audio ────────────────────────────────────────────────────────────────
 
+-- PipeWire name of the RuneLite client's audio stream for gsr "app:<name>".
+-- runelite_audio_app wins; otherwise it is detected from
+-- `gpu-screen-recorder --list-application-audio` and remembered in the data
+-- dir, because RuneLite only shows up there while it is playing sound.
+local detectedAudioApp = nil
+local audioDetectPending = false
+local AUDIO_APP_PATTERNS = { "runelite", "java", "openjdk" }
+
+local function audioAppCachePath()
+    return `{dataDir}/audio_app`
+end
+
+local function configuredAudioApp()
+    local value = cfg("runelite_audio_app")
+    if type(value) == "string" then
+        value = noctalia.string.trim(value)
+        if value ~= "" then return value end
+    end
+    return nil
+end
+
+local function detectAudioApp()
+    if audioDetectPending or configuredAudioApp() ~= nil then return end
+    audioDetectPending = true
+    local launched = noctalia.runAsync({ "gpu-screen-recorder", "--list-application-audio" }, function(result)
+        audioDetectPending = false
+        local found = nil
+        for line in (result.stdout or ""):gmatch("[^\n]+") do
+            local name = noctalia.string.trim(line)
+            local lower = name:lower()
+            for _, pattern in AUDIO_APP_PATTERNS do
+                if found == nil and lower:find(pattern, 1, true) then
+                    found = name
+                end
+            end
+        end
+        if found ~= nil and found ~= detectedAudioApp then
+            log(`RuneLite application audio: '{found}'`)
+            detectedAudioApp = found
+            noctalia.writeFile(audioAppCachePath(), found .. "\n")
+        end
+    end, 5000)
+    if not launched then audioDetectPending = false end
+end
+
+local function loadAudioAppCache()
+    local contents = noctalia.readFile(audioAppCachePath())
+    if contents == nil then return end
+    local name = noctalia.string.trim(contents)
+    if name ~= "" then
+        detectedAudioApp = name
+        log(`remembered RuneLite application audio: '{name}'`)
+    end
+end
+
 local function audioSources()
     local source = cfg("audio_source")
     if source == "none" then return {} end
+    if source == "runelite" or source == "runelite_mic" then
+        local app = configuredAudioApp() or detectedAudioApp
+        if app == nil then
+            log("no RuneLite application audio found yet (start a sound in RuneLite or set runelite_audio_app); "
+                .. (if source == "runelite_mic" then "recording microphone only" else "recording without audio"))
+            return if source == "runelite_mic" then { "default_input" } else {}
+        end
+        local spec = `app:{app}`
+        return { if source == "runelite_mic" then `{spec}|default_input` else spec }
+    end
     if source == "default_input" then return { "default_input" } end
     if source == "both" then return { "default_output|default_input" } end
     if source == "custom" then
@@ -423,8 +488,20 @@ function stopProcess(reason, notify)
     end
 end
 
--- restart: nil for a user/auto start, or { from, to } when restarting after a
--- resize (used for the single "restarted" notification).
+-- gsr arguments for a capture with the current settings.
+local function captureArgs(mode, output)
+    return gsr.buildArgs({
+        mode = mode,
+        output = output,
+        audioSources = audioSources(),
+        ipc = gsr.hasCli(),
+        saveScript = if onSaveReady then scripts.installedPath(dataDir, ON_SAVE_SCRIPT) else nil,
+    })
+end
+
+-- restart: nil for a user/auto start; { from, to } after a resize, or
+-- { reason = "settings" } after a settings change (used for the single
+-- "restarted" notification).
 function startProcess(mode, session, restart)
     if proc ~= nil then
         log("start refused: a gsr process is still running")
@@ -444,13 +521,8 @@ function startProcess(mode, session, restart)
         output = `{dir}/{formatFilename(pattern, RECORD_MARKER)}.mp4`
     end
 
-    local args, err = gsr.buildArgs({
-        mode = mode,
-        output = output,
-        audioSources = audioSources(),
-        ipc = gsr.hasCli(),
-        saveScript = if onSaveReady then scripts.installedPath(dataDir, ON_SAVE_SCRIPT) else nil,
-    })
+    detectAudioApp() -- refresh for the next start
+    local args, err = captureArgs(mode, output)
     if not onSaveReady then
         log("on-save.sh is not installed; clips keep gsr's own names")
     end
@@ -485,6 +557,7 @@ function startProcess(mode, session, restart)
         launchedAt = noctalia.nowMs(),
         statusCheckAt = 0,
         restart = restart,
+        argsKey = table.concat(args, "\0"),
         -- Resize watching: frame size at start, last size seen, and since when.
         baseSize = frameSize(session),
         seenSize = frameSize(session),
@@ -503,7 +576,9 @@ local function markStarted()
     autoFailures = 0
     local s = findSession(proc.sessionId)
     log(`{proc.mode} active (pid {proc.pid}){if s then " for " .. describe(s) else ""}`)
-    if proc.restart ~= nil then
+    if proc.restart ~= nil and proc.restart.reason == "settings" then
+        noctalia.notify(tr("notify.restarted-settings"))
+    elseif proc.restart ~= nil then
         -- One notification per restart, and only once the new capture runs.
         noctalia.notify(tr("notify.restarted-after-resize"), `{proc.restart.from} → {proc.restart.to}`)
     elseif proc.mode == "replay" then
@@ -847,6 +922,9 @@ local function superviseResume()
 end
 
 local function onSessionsUpdated(appeared)
+    if #appeared > 0 then
+        detectAudioApp()
+    end
     if #appeared > 0 and autoSuppressed and pendingResume == nil then
         log("new session appeared; automatic start allowed again")
         autoSuppressed = false
@@ -941,6 +1019,8 @@ local function initialize()
     end
 
     lastCharacter = loadLastCharacter()
+    loadAudioAppCache()
+    detectAudioApp()
     adoptOrphan()
 
     -- Recording needs the runelite-gsr symlink. A failed picker install only
@@ -980,10 +1060,32 @@ function update()
     publishStatus()
 end
 
+-- A running gsr keeps the arguments it was started with. When a settings
+-- change alters them, restart the replay buffer so the change applies now. A
+-- regular recording is not split in two; the change applies to the next one.
+local function applySettingsToRunningCapture()
+    if proc == nil or proc.orphan or queued ~= nil or proc.argsKey == nil then return end
+    if state ~= "starting" and state ~= "active" then return end
+    local output = if proc.mode == "replay" then outputDirectory() else proc.output
+    local args = captureArgs(proc.mode, output)
+    if args == nil or table.concat(args, "\0") == proc.argsKey then return end
+    if proc.mode == "record" then
+        log("settings changed; they apply to the next recording")
+        return
+    end
+    local s = findSession(proc.sessionId)
+    if s == nil then return end
+    log("settings changed; restarting the replay buffer")
+    queued = { mode = "replay", sessionId = s.id, restart = { reason = "settings" } }
+    stopProcess("settings changed", false)
+end
+
 function onConfigChanged()
     writeSaveConf()
+    detectAudioApp()
     windows.resetMatchCache()
     nextPollAt = 0
+    applySettingsToRunningCapture()
     publishStatus()
 end
 
