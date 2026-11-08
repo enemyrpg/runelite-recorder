@@ -1,0 +1,125 @@
+#!/usr/bin/env bash
+# runelite-share-picker - screen-share picker for xdg-desktop-portal-hyprland.
+#
+# When RuneLite Recorder has left a one-shot request in $XDG_RUNTIME_DIR, the
+# requested RuneLite window is selected without a dialog. Otherwise Hyprland's
+# normal picker (hyprland-share-picker) runs, so all other screen sharing works
+# as before.
+#
+# ~/.config/hypr/xdph.conf:
+#   screencopy {
+#       custom_picker_binary = <path to this script>
+#   }
+#
+# Request file, one value per line:
+#   1 key         unique token written by the service
+#   2 address     Hyprland window address, e.g. 0x55fdadff33b0
+#   3 title       window title at request time
+#   4 class       class regex (extended, case-insensitive)
+#   5 exclude     title regex to skip (extended, case-insensitive), may be empty
+
+RUNTIME="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
+REQUEST="$RUNTIME/runelite-recorder.pick"
+DEBUG_LOG="$RUNTIME/runelite-recorder-picker.log"
+MAX_AGE=60 # seconds a request stays valid
+
+debug() { printf '%s %s\n' "$(date '+%F %T')" "$*" >>"$DEBUG_LOG" 2>/dev/null; }
+
+fallback() {
+    debug "fallback: $1"
+    exec hyprland-share-picker "${@:2}"
+}
+
+# Normalize a window address to lowercase hex with 0x, whether xdph sent it as
+# hex or as a decimal number.
+normalize_address() {
+    local a="${1,,}"
+    if [[ "$a" =~ ^0x[0-9a-f]+$ ]]; then
+        printf '0x%x' "$((16#${a#0x}))"
+    elif [[ "$a" =~ ^[0-9a-f]+$ ]] && [[ "$a" =~ [a-f] ]]; then
+        printf '0x%x' "$((16#$a))"
+    elif [[ "$a" =~ ^[0-9]+$ ]]; then
+        printf '0x%x' "$a"
+    fi
+}
+
+# Keep the debug log short: the last ~200 lines are enough to see recent runs.
+if [ "$(wc -l <"$DEBUG_LOG" 2>/dev/null || echo 0)" -gt 400 ]; then
+    tail -n 200 "$DEBUG_LOG" >"$DEBUG_LOG.tmp" 2>/dev/null && mv -f "$DEBUG_LOG.tmp" "$DEBUG_LOG"
+fi
+debug "---- picker started"
+
+[ -f "$REQUEST" ] || fallback "no request" "$@"
+
+age=$(($(date +%s) - $(stat -c %Y "$REQUEST" 2>/dev/null || echo 0)))
+{
+    IFS= read -r key
+    IFS= read -r want_address
+    IFS= read -r want_title
+    IFS= read -r class_re
+    IFS= read -r exclude_re
+} <"$REQUEST" 2>/dev/null
+rm -f "$REQUEST" # one-shot request
+debug "request key=${key:-} address=${want_address:-} title=${want_title:-} age=${age}s"
+[ "$age" -le "$MAX_AGE" ] || fallback "request expired" "$@"
+[ -n "${class_re:-}" ] || fallback "request has no class pattern" "$@"
+want_address="$(normalize_address "${want_address:-}")"
+
+# XDPH_WINDOW_SHARING_LIST, one entry per window:
+#   <handle>[HC>]<class>[HT>]<title>[HE>]<address>[HA>]   (newer xdph)
+#   <handle>[HC>]<class>[HT>]<title>[HE>]                 (older xdph)
+list="${XDPH_WINDOW_SHARING_LIST:-}"
+by_address=""
+by_title=""
+first=""
+while [ -n "$list" ]; do
+    if [[ "$list" == *"[HE>]"* ]]; then
+        entry="${list%%"[HE>]"*}"
+        list="${list#*"[HE>]"}"
+    else
+        entry="$list"
+        list=""
+    fi
+    address=""
+    if [[ "$list" == *"[HA>]"* ]]; then
+        segment="${list%%"[HA>]"*}"
+        if [[ "$segment" != *"[HC>]"* ]]; then
+            address="$segment"
+            list="${list#*"[HA>]"}"
+        fi
+    fi
+    handle="${entry%%"[HC>]"*}"
+    rest="${entry#*"[HC>]"}"
+    class="${rest%%"[HT>]"*}"
+    title="${rest#*"[HT>]"}"
+    [[ "$handle" =~ ^[0-9]+$ ]] || continue
+    debug "window handle=$handle address=$address class=$class title=$title"
+
+    if [ -n "$want_address" ] && [ -n "$address" ] &&
+        [ "$(normalize_address "$address")" = "$want_address" ]; then
+        by_address="$handle"
+        break
+    fi
+    printf '%s\n' "$class" | grep -qiE -- "$class_re" || continue
+    if [ -n "${exclude_re:-}" ] && printf '%s\n' "$title" | grep -qiE -- "$exclude_re"; then
+        continue
+    fi
+    [ -n "$first" ] || first="$handle"
+    if [ -z "$by_title" ] && [ -n "${want_title:-}" ] && [ "$title" = "$want_title" ]; then
+        by_title="$handle"
+    fi
+done
+
+if [ -n "$by_address" ]; then
+    handle="$by_address"; how="address"
+elif [ -n "$by_title" ]; then
+    handle="$by_title"; how="title"
+elif [ -n "$first" ]; then
+    handle="$first"; how="first match"
+else
+    fallback "no matching window" "$@"
+fi
+
+debug "selected handle=$handle by $how"
+# No "r" flag: the choice must never be stored as a restore token.
+echo "[SELECTION]/window:$handle"
