@@ -48,7 +48,7 @@ local state = "idle"
 -- sessionId, character, output, launchedAt, stopSentAt, killed, notifyOnStop,
 -- statusCheckAt, statusPending, orphan.
 local proc = nil
--- Capture to start once the current process is gone: { mode, sessionId }.
+-- Capture to start once the current process is gone: { mode, sessionId, restart }.
 -- Only one is kept; a newer command replaces it.
 local queued = nil
 local saving = false
@@ -194,6 +194,11 @@ end
 
 local startProcess, stopProcess
 
+-- What the portal stream delivers; gsr freezes when this changes.
+local function frameSize(s)
+    return `{s.frameWidth}x{s.frameHeight}`
+end
+
 -- Called once the gsr process is confirmed gone.
 local function onProcessExit()
     local p = proc
@@ -237,7 +242,7 @@ local function onProcessExit()
     if next ~= nil then
         local s = findSession(next.sessionId)
         if s ~= nil then
-            startProcess(next.mode, s)
+            startProcess(next.mode, s, next.restart)
         else
             log("queued start dropped: its session is gone")
         end
@@ -258,7 +263,9 @@ function stopProcess(reason, notify)
     end
 end
 
-function startProcess(mode, session)
+-- restart: nil for a user/auto start, or { from, to } when restarting after a
+-- resize (used for the single "restarted" notification).
+function startProcess(mode, session, restart)
     if proc ~= nil then
         log("start refused: a gsr process is still running")
         return false
@@ -311,6 +318,12 @@ function startProcess(mode, session)
         output = output,
         launchedAt = noctalia.nowMs(),
         statusCheckAt = 0,
+        restart = restart,
+        -- Resize watching: frame size at start, last size seen, and since when.
+        baseSize = frameSize(session),
+        seenSize = frameSize(session),
+        seenSince = noctalia.nowMs(),
+        resized = false,
     }
     log(`starting {mode} of {describe(session)} -> {output}`)
     log(`gsr args: {table.concat(args, " ")}`)
@@ -323,7 +336,10 @@ local function markStarted()
     setState("active")
     local s = findSession(proc.sessionId)
     log(`{proc.mode} active (pid {proc.pid}){if s then " for " .. describe(s) else ""}`)
-    if proc.mode == "replay" then
+    if proc.restart ~= nil then
+        -- One notification per restart, and only once the new capture runs.
+        noctalia.notify(tr("notify.restarted-after-resize"), `{proc.restart.from} → {proc.restart.to}`)
+    elseif proc.mode == "replay" then
         noctalia.notify(tr("notify.replay-active"), if proc.character then proc.character else nil)
     end
 end
@@ -513,6 +529,45 @@ local function diffSessions(old, new)
     end
 end
 
+-- Called after every session poll. A frame-size change freezes the portal
+-- stream, so once the size has been stable for resize_settle seconds the
+-- capture is restarted (or stopped). Every new size resets the wait, so a drag
+-- gives one restart. Returning to the original size still counts: the stream
+-- may have frozen in between. A move to another monitor or workspace with the
+-- same frame size is not a change.
+local function watchSize()
+    if proc == nil or proc.orphan or queued ~= nil then return end
+    if state ~= "starting" and state ~= "active" then return end
+    local s = findSession(proc.sessionId)
+    if s == nil then return end
+
+    local now = noctalia.nowMs()
+    local size = frameSize(s)
+    if size ~= proc.seenSize then
+        log(`frame size changed: {proc.seenSize} -> {size} (waiting for it to settle)`)
+        proc.seenSize = size
+        proc.seenSince = now
+        proc.resized = true
+        return
+    end
+    if not proc.resized then return end
+
+    local settleSeconds = math.clamp(math.floor(tonumber(cfg("resize_settle")) or 3), 1, 30)
+    if now - proc.seenSince < settleSeconds * 1000 then return end
+    proc.resized = false
+
+    local from = proc.baseSize
+    if cfg("on_resize") == "stop" then
+        log(`window resized {from} -> {size}; stopping (on_resize = stop)`)
+        stopProcess(`window resized {from} -> {size}`, false)
+        noctalia.notify(tr("notify.stopped-after-resize"), `{from} → {size}`)
+        return
+    end
+    log(`window resized {from} -> {size}; restarting {proc.mode}`)
+    queued = { mode = proc.mode, sessionId = s.id, restart = { from = from, to = size } }
+    stopProcess(`restart after resize {from} -> {size}`, false)
+end
+
 local function onSessionsUpdated()
     if queued ~= nil and findSession(queued.sessionId) == nil then
         log("queued start dropped: its session closed")
@@ -521,6 +576,7 @@ local function onSessionsUpdated()
     if proc ~= nil and not proc.orphan and state ~= "stopping" and findSession(proc.sessionId) == nil then
         stopProcess("recorded session closed", true)
     end
+    watchSize()
 end
 
 local function poll()

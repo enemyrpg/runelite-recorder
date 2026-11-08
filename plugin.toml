@@ -214,6 +214,29 @@ min = 0
 max = 512
 visible_when = { key = "audio_source", values = ["default_output", "default_input", "both", "custom"] }
 
+# ── Window resize ────────────────────────────────────────────────────────────
+
+[[setting]]
+key = "on_resize"
+type = "select"
+label_key = "settings.on_resize.label"
+description_key = "settings.on_resize.description"
+default = "restart"
+options = [
+  { value = "restart", label_key = "settings.on_resize.options.restart" },
+  { value = "stop", label_key = "settings.on_resize.options.stop" },
+]
+
+[[setting]]
+key = "resize_settle"
+type = "int"
+label_key = "settings.resize_settle.label"
+description_key = "settings.resize_settle.description"
+default = 3
+min = 1
+max = 30
+visible_when = { key = "on_resize", values = ["restart"] }
+
 # ── Session discovery ────────────────────────────────────────────────────────
 
 [[setting]]
@@ -229,7 +252,7 @@ key = "exclude_title"
 type = "string"
 label_key = "settings.exclude_title.label"
 description_key = "settings.exclude_title.description"
-default = "^RuneLite Launcher$"
+default = "^(RuneLite Launcher|win[0-9]+)$"
 advanced = true
 
 # Headless background service: discovers RuneLite sessions and owns the

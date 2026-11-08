@@ -6,7 +6,7 @@
     },
     "exclude_title": {
       "label": "Excluded window titles",
-      "description": "Extended regular expression (case-insensitive). Windows whose title matches are ignored, such as the RuneLite splash screen."
+      "description": "Extended regular expression (case-insensitive). Windows whose title matches are ignored, such as the RuneLite splash screen and Java popup windows."
     },
     "directory": {
       "label": "Output Directory",
@@ -121,6 +121,18 @@
     "audio_bitrate": {
       "label": "Audio Bitrate (kbps)",
       "description": "0 = automatic (128 for Opus/FLAC, 160 for AAC)"
+    },
+    "on_resize": {
+      "label": "When the Window Is Resized",
+      "description": "gpu-screen-recorder freezes when the captured window changes size. Restart the capture, or stop it and notify.",
+      "options": {
+        "restart": "Restart capture",
+        "stop": "Stop and notify"
+      }
+    },
+    "resize_settle": {
+      "label": "Resize Settle Time (s)",
+      "description": "Restart only after the window size has stayed the same for this many seconds."
     }
   },
   "notify": {
@@ -140,6 +152,8 @@
     "replay-stopped": "Replay buffer stopped",
     "save-failed": "Could not save replay",
     "stopped-early": "gpu-screen-recorder exited unexpectedly. Check the Noctalia log for details.",
-    "unavailable": "gpu-screen-recorder or Hyprland is not available"
+    "unavailable": "gpu-screen-recorder or Hyprland is not available",
+    "restarted-after-resize": "Recording restarted after resize",
+    "stopped-after-resize": "Recording stopped: RuneLite window was resized"
   }
 }
