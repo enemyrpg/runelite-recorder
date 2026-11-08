@@ -18,6 +18,47 @@ tags = ["recording", "video", "gaming", "hyprland"]
 icon = "video"
 description = "Replay buffer and recording of the RuneLite window with gpu-screen-recorder (Hyprland)."
 
+# ── Start and sessions ───────────────────────────────────────────────────────
+
+[[setting]]
+key = "start_mode"
+type = "select"
+label_key = "settings.start_mode.label"
+description_key = "settings.start_mode.description"
+default = "auto"
+options = [
+  { value = "auto", label_key = "settings.start_mode.options.auto" },
+  { value = "manual", label_key = "settings.start_mode.options.manual" },
+]
+
+[[setting]]
+key = "auto_session"
+type = "select"
+label_key = "settings.auto_session.label"
+description_key = "settings.auto_session.description"
+default = "last_character"
+options = [
+  { value = "last_character", label_key = "settings.auto_session.options.last_character" },
+  { value = "focused", label_key = "settings.auto_session.options.focused" },
+  { value = "first", label_key = "settings.auto_session.options.first" },
+]
+
+[[setting]]
+key = "follow_next_session"
+type = "bool"
+label_key = "settings.follow_next_session.label"
+description_key = "settings.follow_next_session.description"
+default = true
+
+[[setting]]
+key = "stop_grace"
+type = "int"
+label_key = "settings.stop_grace.label"
+description_key = "settings.stop_grace.description"
+default = 5
+min = 0
+max = 120
+
 # ── Output ───────────────────────────────────────────────────────────────────
 
 [[setting]]
@@ -260,3 +301,14 @@ advanced = true
 [[service]]
 id = "service"
 entry = "service.luau"
+
+# Session picker. Lists RuneLite sessions; clicking one moves the capture there.
+# Opened by the bar widget, or: noctalia msg panel-toggle fredrikj/runelite-recorder:sessions
+[[panel]]
+id = "sessions"
+entry = "panel.luau"
+width = 380
+height = 360
+placement = "attached"
+position = "auto"
+open_near_click = true

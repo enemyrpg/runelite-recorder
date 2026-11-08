@@ -133,6 +133,31 @@
     "resize_settle": {
       "label": "Resize Settle Time (s)",
       "description": "Restart only after the window size has stayed the same for this many seconds."
+    },
+    "start_mode": {
+      "label": "Start Mode",
+      "description": "Automatic starts the replay buffer when a RuneLite session appears. Manual waits for you to start it.",
+      "options": {
+        "auto": "Automatic",
+        "manual": "Manual"
+      }
+    },
+    "auto_session": {
+      "label": "Session to Record",
+      "description": "Which session is picked when none is chosen explicitly.",
+      "options": {
+        "last_character": "Last chosen character",
+        "focused": "Focused window",
+        "first": "First session"
+      }
+    },
+    "follow_next_session": {
+      "label": "Follow Next Session",
+      "description": "When the recorded client closes while others run, move the replay buffer to the next one."
+    },
+    "stop_grace": {
+      "label": "Stop Delay (s)",
+      "description": "After the last client closes, wait this long before stopping, in case the client restarts."
     }
   },
   "notify": {
@@ -155,5 +180,22 @@
     "unavailable": "gpu-screen-recorder or Hyprland is not available",
     "restarted-after-resize": "Recording restarted after resize",
     "stopped-after-resize": "Recording stopped: RuneLite window was resized"
+  },
+  "panel": {
+    "title": "RuneLite Sessions",
+    "no-sessions": "No RuneLite session running",
+    "not-logged-in": "Not logged in",
+    "details": "pid {pid} · workspace {workspace} · {width}×{height}",
+    "state-idle": "Not recording",
+    "state-starting": "Starting…",
+    "state-stopping": "Stopping…",
+    "state-replay": "Replay buffer · {character}",
+    "state-record": "Recording · {character}",
+    "unavailable": "gpu-screen-recorder or Hyprland is not available",
+    "start-replay": "Start replay",
+    "stop-replay": "Stop replay",
+    "save-replay": "Save replay",
+    "recording-here": "Recording this session",
+    "select-hint": "Click a session to record it"
   }
 }
