@@ -10,7 +10,7 @@
 -- A session is a client window whose class matches opts.classPattern and whose
 -- title does not match opts.excludeTitle (both POSIX extended regexes, matched
 -- case-insensitively). Hyprland reuses window addresses, so a session's identity
--- is address + pid.
+-- is address + pid, and each client process yields at most one session.
 
 local M = {}
 
@@ -169,6 +169,27 @@ local function buildSessions(clients, monitors)
                 focused = c.focusHistoryID == 0,
             })
         end
+    end
+
+    -- One session per client process. Java can map extra small windows with the
+    -- same class (popups titled "win0", "win1", ...); keep the main one: a title
+    -- starting with "RuneLite" wins, then the larger window.
+    local byPid = {}
+    for _, s in sessions do
+        local best = byPid[s.pid]
+        if best == nil then
+            byPid[s.pid] = s
+        else
+            local sMain = (s.title or ""):match("^RuneLite") ~= nil
+            local bMain = (best.title or ""):match("^RuneLite") ~= nil
+            if (sMain and not bMain) or (sMain == bMain and s.width * s.height > best.width * best.height) then
+                byPid[s.pid] = s
+            end
+        end
+    end
+    sessions = {}
+    for _, s in byPid do
+        table.insert(sessions, s)
     end
 
     -- Stable order: oldest client process first.
