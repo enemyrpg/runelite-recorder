@@ -1,0 +1,12 @@
+{
+  "settings": {
+    "window_class": {
+      "label": "Window class",
+      "description": "Extended regular expression (case-insensitive) matched against the Hyprland window class of RuneLite client windows."
+    },
+    "exclude_title": {
+      "label": "Excluded window titles",
+      "description": "Extended regular expression (case-insensitive). Windows whose title matches are ignored, such as the RuneLite splash screen."
+    }
+  }
+}

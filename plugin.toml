@@ -1,0 +1,43 @@
+# RuneLite Recorder - records only the RuneLite (Old School RuneScape) client window
+# with gpu-screen-recorder, with the replay buffer as the main feature.
+#
+# The headless [[service]] owns session discovery and the gpu-screen-recorder
+# process for the whole session. UI entries are thin clients that mirror the
+# service's "status" and drive it through the "command" channel.
+#
+# Settings are plugin-level ([[setting]] at the root), shared by every entry.
+
+id = "fredrikj/runelite-recorder"
+name = "RuneLite Recorder"
+version = "0.1.0"
+plugin_api = 43
+author = "fredrikj"
+license = "MIT"
+dependencies = ["gpu-screen-recorder", "hyprctl"]
+tags = ["recording", "video", "gaming", "hyprland"]
+icon = "video"
+description = "Replay buffer and recording of the RuneLite window with gpu-screen-recorder (Hyprland)."
+
+# ── Session discovery ────────────────────────────────────────────────────────
+
+[[setting]]
+key = "window_class"
+type = "string"
+label_key = "settings.window_class.label"
+description_key = "settings.window_class.description"
+default = "^net-runelite-client-RuneLite$"
+advanced = true
+
+[[setting]]
+key = "exclude_title"
+type = "string"
+label_key = "settings.exclude_title.label"
+description_key = "settings.exclude_title.description"
+default = "^RuneLite Launcher$"
+advanced = true
+
+# Headless background service: discovers RuneLite sessions and owns the
+# gpu-screen-recorder process.
+[[service]]
+id = "service"
+entry = "service.luau"
