@@ -13,6 +13,7 @@
 local windows = require("./lib/hyprland.luau")
 local gsr = require("./lib/gsr.luau")
 local picker = require("./lib/picker.luau")
+local scripts = require("./lib/scripts.luau")
 
 local TICK_MS = 250
 local POLL_IDLE_MS = 3000 -- no session known
@@ -27,6 +28,14 @@ local STARTED_MIN_MS = 2000
 local STATUS_POLL_MS = 1000 -- gsr-cli status interval while starting
 local KILL_AFTER_MS = 3000 -- SIGINT, then SIGKILL after this
 local SAVE_TIMEOUT_MS = 30000
+-- How long to wait for on-save.sh to report the final path of a saved clip.
+local SAVED_WAIT_MS = 8000
+local SAVED_POLL_MS = 250
+-- Stands in for the character name in a recording's file name until it is
+-- saved; on-save.sh replaces it with the name at that moment.
+local RECORD_MARKER = "RLRCHAR"
+local ON_SAVE_SCRIPT = "on-save.sh"
+local DEFAULT_REPLAY_PATTERN = "replay_{character}_%Y%m%d_%H%M%S"
 
 noctalia.setUpdateInterval(TICK_MS)
 
@@ -69,6 +78,10 @@ local pendingResume = nil
 local lastCharacter = nil
 
 local lastStatusJson = nil
+local onSaveReady = false
+local writtenCharacter = nil -- last value written to <data>/character
+-- Clips waiting for on-save.sh: { original, deadline, nextCheck, callback }
+local savedWaits = {}
 
 -- ── Helpers ──────────────────────────────────────────────────────────────
 
@@ -136,6 +149,73 @@ local function outputDirectory()
     local configured = cfg("directory")
     local dir = noctalia.expandPath(if type(configured) == "string" and configured ~= "" then configured else "~/Videos/RuneLite")
     return (dir:gsub("/+$", ""))
+end
+
+local function shellQuote(value)
+    return "'" .. tostring(value):gsub("'", [['"'"']]) .. "'"
+end
+
+-- Settings on-save.sh reads at save time (sourced as shell assignments).
+local function writeSaveConf()
+    if dataDir == nil then return end
+    local replayPattern = cfg("replay_filename_pattern")
+    if type(replayPattern) ~= "string" or replayPattern == "" then
+        replayPattern = DEFAULT_REPLAY_PATTERN
+    end
+    local post = cfg("post_save_script")
+    post = if type(post) == "string" and post ~= "" then noctalia.expandPath(post) else ""
+    local lines = {
+        `output_dir={shellQuote(outputDirectory())}`,
+        `replay_pattern={shellQuote(replayPattern)}`,
+        `record_marker={shellQuote(RECORD_MARKER)}`,
+        `per_character_folder={if cfg("per_character_folder") then "1" else "0"}`,
+        `post_save_script={shellQuote(post)}`,
+    }
+    noctalia.writeFile(`{dataDir}/save.conf`, table.concat(lines, "\n") .. "\n")
+end
+
+-- Current character of the recorded session, read by on-save.sh.
+local function writeCharacter(character)
+    local value = character or ""
+    if value == writtenCharacter or dataDir == nil then return end
+    writtenCharacter = value
+    noctalia.writeFile(`{dataDir}/character`, value .. "\n")
+end
+
+-- Calls callback(finalPath) once on-save.sh has handled `original`, or with
+-- `original` if it does not report back in time.
+local function awaitSaved(original, callback)
+    table.insert(savedWaits, {
+        original = original,
+        deadline = noctalia.nowMs() + SAVED_WAIT_MS,
+        nextCheck = 0,
+        callback = callback,
+    })
+end
+
+local function superviseSaved()
+    if #savedWaits == 0 then return end
+    local now = noctalia.nowMs()
+    local remaining = {}
+    for _, w in savedWaits do
+        local done = false
+        if now >= w.nextCheck then
+            w.nextCheck = now + SAVED_POLL_MS
+            local marker = `{dataDir}/saved/{basename(w.original)}`
+            local contents = noctalia.readFile(marker)
+            if contents ~= nil and contents ~= "" then
+                noctalia.removeFile(marker)
+                done = true
+                w.callback(noctalia.string.trim(contents))
+            elseif now >= w.deadline then
+                log(`on-save.sh did not report {basename(w.original)}; using the original path`)
+                done = true
+                w.callback(w.original)
+            end
+        end
+        if not done then table.insert(remaining, w) end
+    end
+    savedWaits = remaining
 end
 
 local function copyToClipboard(path)
@@ -276,17 +356,24 @@ local function onProcessExit()
         log(`previous gsr process {p.pid} is gone`)
     elseif wasState == "stopping" then
         log(`gsr {p.pid} stopped ({p.mode})`)
-        if p.mode == "record" and p.notifyOnStop then
-            noctalia.runAsync({ "test", "-s", p.output }, function(result)
-                if result.exitCode == 0 then
-                    log(`recording saved: {p.output}`)
-                    noctalia.notify(tr("notify.recording-saved"), basename(p.output))
-                    if cfg("copy_to_clipboard") then copyToClipboard(p.output) end
-                else
-                    gsr.logTail(log, "recording stopped but no output file was found")
-                    noctalia.notifyError(tr("notify.recording-failed"), tr("notify.stopped-early"))
-                end
-            end, 5000)
+        if p.mode == "record" then
+            -- Every finished recording is renamed by on-save.sh; only notify
+            -- when the user asked for the stop.
+            local notify = p.notifyOnStop
+            awaitSaved(p.output, function(path)
+                noctalia.runAsync({ "test", "-s", path }, function(result)
+                    if result.exitCode == 0 then
+                        log(`recording saved: {path}`)
+                        if notify then
+                            noctalia.notify(tr("notify.recording-saved"), basename(path))
+                        end
+                        if cfg("copy_to_clipboard") then copyToClipboard(path) end
+                    else
+                        gsr.logTail(log, "recording stopped but no output file was found")
+                        noctalia.notifyError(tr("notify.recording-failed"), tr("notify.stopped-early"))
+                    end
+                end, 5000)
+            end)
         elseif p.mode == "replay" and p.notifyOnStop then
             noctalia.notify(tr("notify.replay-stopped"))
         end
@@ -354,7 +441,7 @@ function startProcess(mode, session, restart)
     local output = dir
     if mode == "record" then
         local pattern = cfg("filename_pattern") or "runelite_{character}_%Y%m%d_%H%M%S"
-        output = `{dir}/{formatFilename(pattern, session.character)}.mp4`
+        output = `{dir}/{formatFilename(pattern, RECORD_MARKER)}.mp4`
     end
 
     local args, err = gsr.buildArgs({
@@ -362,7 +449,13 @@ function startProcess(mode, session, restart)
         output = output,
         audioSources = audioSources(),
         ipc = gsr.hasCli(),
+        saveScript = if onSaveReady then scripts.installedPath(dataDir, ON_SAVE_SCRIPT) else nil,
     })
+    if not onSaveReady then
+        log("on-save.sh is not installed; clips keep gsr's own names")
+    end
+    writeSaveConf()
+    writeCharacter(session.character)
     if args == nil then
         log(`start aborted: {err}`)
         noctalia.notifyError(tr(if mode == "replay" then "notify.replay-failed" else "notify.recording-failed"), err)
@@ -590,9 +683,16 @@ local function saveReplay()
             noctalia.notifyError(tr("notify.save-failed"), noctalia.string.trim(stderr))
             return
         end
-        log(`replay saved: {path or noctalia.string.trim(stdout)}`)
-        noctalia.notify(tr("notify.replay-saved"), if path then basename(path) else nil)
-        if path and cfg("copy_to_clipboard") then copyToClipboard(path) end
+        if path == nil then
+            log(`replay saved: {noctalia.string.trim(stdout)}`)
+            noctalia.notify(tr("notify.replay-saved"))
+            return
+        end
+        awaitSaved(path, function(final)
+            log(`replay saved: {final}`)
+            noctalia.notify(tr("notify.replay-saved"), basename(final))
+            if cfg("copy_to_clipboard") then copyToClipboard(final) end
+        end)
     end)
 end
 
@@ -764,6 +864,16 @@ local function onSessionsUpdated(appeared)
     superviseResume()
     watchSize()
     maybeAutoStart()
+    if proc ~= nil and not proc.orphan then
+        local s = findSession(proc.sessionId)
+        if s ~= nil then
+            if s.character ~= proc.character then
+                log(`recorded character is now '{s.character or "unknown"}'`)
+                proc.character = s.character
+            end
+            writeCharacter(s.character)
+        end
+    end
 end
 
 local function poll()
@@ -840,6 +950,11 @@ local function initialize()
         ready = ok
         publishStatus()
     end)
+    writeSaveConf()
+    scripts.install(dataDir, ON_SAVE_SCRIPT, function(ok, err)
+        if not ok then log(`on-save.sh setup failed: {err or "?"}`) end
+        onSaveReady = ok
+    end)
     picker.install(dataDir, function(ok, err)
         if not ok then log(`picker setup failed: {err or "?"}`) end
         checkPicker(true)
@@ -857,6 +972,7 @@ function update()
     picker.tick()
     superviseProcess()
     superviseResume()
+    superviseSaved()
     maybeAutoStart()
     if noctalia.nowMs() >= nextPollAt then
         poll()
@@ -865,6 +981,7 @@ function update()
 end
 
 function onConfigChanged()
+    writeSaveConf()
     windows.resetMatchCache()
     nextPollAt = 0
     publishStatus()

@@ -158,6 +158,18 @@
     "stop_grace": {
       "label": "Stop Delay (s)",
       "description": "After the last client closes, wait this long before stopping, in case the client restarts."
+    },
+    "replay_filename_pattern": {
+      "label": "Replay Filename Pattern",
+      "description": "strftime pattern without extension, applied when the replay is saved. {character} is the character at that moment, or \"unknown\"."
+    },
+    "per_character_folder": {
+      "label": "Folder per Character",
+      "description": "Save clips in <output directory>/<character>/."
+    },
+    "post_save_script": {
+      "label": "Post-save Script",
+      "description": "Executable run after a clip is saved and renamed, with the final path and the type (replay or regular) as arguments."
     }
   },
   "notify": {

@@ -137,6 +137,7 @@ end
 --   output = directory (replay) or file path (record),
 --   audioSources = { string },
 --   ipc = boolean,
+--   saveScript = path of the -sc script, or nil,
 -- }
 -- Returns argv (without the binary) or nil, err.
 function M.buildArgs(opts)
@@ -178,6 +179,9 @@ function M.buildArgs(opts)
     appendAll(args, { "-restore-portal-session", "no" })
     if opts.ipc then
         appendAll(args, { "-ipc", M.ipcSocketPath() })
+    end
+    if opts.saveScript then
+        appendAll(args, { "-sc", opts.saveScript })
     end
     appendAll(args, { "-v", "no", "-o", opts.output })
     return args, nil
