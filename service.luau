@@ -53,6 +53,21 @@ local proc = nil
 local queued = nil
 local saving = false
 
+-- Automatic start (start_mode = auto). The user stopping the replay buffer
+-- suppresses it until a new session appears or the user starts it again.
+local autoSuppressed = false
+local autoFailures = 0
+local autoRetryAt = 0
+local AUTO_MAX_FAILURES = 3
+local AUTO_RETRY_MS = 10000
+
+-- The last session closed while capturing: wait stop_grace seconds in case the
+-- client restarts, then stop. { mode, untilMs }
+local pendingResume = nil
+
+-- Last character the user picked, persisted in the plugin data dir.
+local lastCharacter = nil
+
 local lastStatusJson = nil
 
 -- ── Helpers ──────────────────────────────────────────────────────────────
@@ -128,6 +143,52 @@ local function copyToClipboard(path)
     noctalia.copyToClipboard(uri, "text/uri-list")
 end
 
+local function lastCharacterPath()
+    return `{dataDir}/last_character`
+end
+
+local function loadLastCharacter()
+    local contents = noctalia.readFile(lastCharacterPath())
+    if contents == nil then return nil end
+    local name = noctalia.string.trim(contents)
+    return if name ~= "" then name else nil
+end
+
+local function rememberCharacter(session)
+    if session == nil or session.character == nil or session.character == lastCharacter then return end
+    lastCharacter = session.character
+    noctalia.writeFile(lastCharacterPath(), lastCharacter .. "\n")
+    log(`remembered character '{lastCharacter}'`)
+end
+
+-- Session to use when none was named, following auto_session:
+--   last_character  the remembered character if running, else focused, else first
+--   focused         the focused RuneLite window, else first
+--   first           the first session (oldest client)
+-- excludeId skips one session (used when following the next one).
+local function chooseSession(excludeId)
+    local candidates = {}
+    for _, sess in sessions do
+        if sess.id ~= excludeId then table.insert(candidates, sess) end
+    end
+    if #candidates == 0 then return nil end
+
+    local mode = cfg("auto_session")
+    if mode ~= "first" and mode ~= "focused" and lastCharacter ~= nil then
+        for _, sess in candidates do
+            if sess.character ~= nil and looseName(sess.character) == looseName(lastCharacter) then
+                return sess
+            end
+        end
+    end
+    if mode ~= "first" then
+        for _, sess in candidates do
+            if sess.focused then return sess end
+        end
+    end
+    return candidates[1]
+end
+
 -- ── Status publication ───────────────────────────────────────────────────
 
 local function publishStatus()
@@ -156,6 +217,9 @@ local function publishStatus()
         mode = if proc then proc.mode else nil,
         recordingSession = if proc and not proc.orphan then proc.sessionId else nil,
         replayDuration = cfg("replay_duration"),
+        startMode = if cfg("start_mode") == "manual" then "manual" else "auto",
+        autoSuppressed = autoSuppressed,
+        lastCharacter = lastCharacter,
         audioSource = cfg("audio_source"),
     }
     -- Only publish real changes so watchers are not woken every tick.
@@ -226,9 +290,18 @@ local function onProcessExit()
         elseif p.mode == "replay" and p.notifyOnStop then
             noctalia.notify(tr("notify.replay-stopped"))
         end
+    elseif findSession(p.sessionId) == nil then
+        log(`gsr {p.pid} ended after its window closed`)
     elseif wasState == "starting" and gsr.portalCancelled() then
         log("window selection was cancelled in the portal dialog")
+        autoSuppressed = true
     else
+        autoFailures += 1
+        autoRetryAt = noctalia.nowMs() + AUTO_RETRY_MS * autoFailures
+        if autoFailures >= AUTO_MAX_FAILURES then
+            log(`{autoFailures} failed starts in a row; automatic start paused until a new session appears`)
+            autoSuppressed = true
+        end
         local what = if p.mode == "replay" then "replay buffer" else "recording"
         gsr.logTail(log, `{what} ended unexpectedly`)
         noctalia.notifyError(
@@ -334,6 +407,7 @@ end
 local function markStarted()
     if state ~= "starting" or proc == nil then return end
     setState("active")
+    autoFailures = 0
     local s = findSession(proc.sessionId)
     log(`{proc.mode} active (pid {proc.pid}){if s then " for " .. describe(s) else ""}`)
     if proc.restart ~= nil then
@@ -414,21 +488,13 @@ local function resolveSession(arg)
         end
         return nil
     end
-    for _, s in sessions do
-        if s.focused then return s end
-    end
-    return sessions[1]
+    return chooseSession(nil)
 end
 
 -- ── Actions ──────────────────────────────────────────────────────────────
 
-local function startCapture(mode, sessionArg)
-    local session = resolveSession(sessionArg)
-    if session == nil then
-        log(`no RuneLite session to record{if sessionArg and sessionArg ~= "" then ` (wanted '{sessionArg}')` else ""}`)
-        noctalia.notify(tr("notify.no-session"))
-        return
-    end
+local function startCaptureOn(mode, session)
+    pendingResume = nil
     if proc == nil then
         startProcess(mode, session)
         return
@@ -444,12 +510,53 @@ local function startCapture(mode, sessionArg)
     stopProcess(`switching to {mode} of {describe(session)}`, false)
 end
 
+-- User-initiated start. A named session is remembered for last_character.
+local function startCapture(mode, sessionArg)
+    local session = resolveSession(sessionArg)
+    if session == nil then
+        log(`no RuneLite session to record{if sessionArg and sessionArg ~= "" then ` (wanted '{sessionArg}')` else ""}`)
+        noctalia.notify(tr("notify.no-session"))
+        return
+    end
+    if sessionArg ~= nil and sessionArg ~= "" then
+        rememberCharacter(session)
+    end
+    autoSuppressed = false
+    startCaptureOn(mode, session)
+end
+
 -- What will be running once pending work is done: queued start first, else the
 -- live process unless it is being stopped.
 local function effectiveMode()
     if queued ~= nil then return queued.mode end
     if proc ~= nil and not proc.orphan and state ~= "stopping" then return proc.mode end
     return nil
+end
+
+-- Switch the capture to another session (panel click, `select` IPC). When
+-- nothing runs, this starts the replay buffer there.
+local function selectSession(arg)
+    local session = nil
+    if arg == "next" then
+        local current = if queued then queued.sessionId elseif proc then proc.sessionId else nil
+        for i, sess in sessions do
+            if sess.id == current then
+                session = sessions[(i % #sessions) + 1]
+                break
+            end
+        end
+        session = session or sessions[1]
+    else
+        session = resolveSession(arg)
+    end
+    if session == nil then
+        log(`select: no session matches '{arg or ""}'`)
+        noctalia.notify(tr("notify.no-session"))
+        return
+    end
+    rememberCharacter(session)
+    autoSuppressed = false
+    startCaptureOn(effectiveMode() or "replay", session)
 end
 
 local function saveReplay()
@@ -490,6 +597,10 @@ local function saveReplay()
 end
 
 local function stopCapture(mode)
+    if mode ~= "record" then
+        autoSuppressed = true
+    end
+    pendingResume = nil
     if queued ~= nil and (mode == nil or queued.mode == mode) then
         log(`cancelled queued {queued.mode}`)
         queued = nil
@@ -506,10 +617,12 @@ local function diffSessions(old, new)
     local newById = {}
     for _, s in new do newById[s.id] = s end
 
+    local appeared = {}
     for _, s in new do
         local prev = oldById[s.id]
         if prev == nil then
             log(`session appeared: {describe(s)}`)
+            table.insert(appeared, s.id)
         else
             if prev.title ~= s.title then
                 log(`session title changed: [{s.id}] '{prev.title}' -> '{s.title}'`)
@@ -527,6 +640,7 @@ local function diffSessions(old, new)
             log(`session closed: {describe(s)}`)
         end
     end
+    return appeared
 end
 
 -- Called after every session poll. A frame-size change freezes the portal
@@ -559,6 +673,8 @@ local function watchSize()
     local from = proc.baseSize
     if cfg("on_resize") == "stop" then
         log(`window resized {from} -> {size}; stopping (on_resize = stop)`)
+        -- Do not let start_mode = auto bring it straight back.
+        autoSuppressed = true
         stopProcess(`window resized {from} -> {size}`, false)
         noctalia.notify(tr("notify.stopped-after-resize"), `{from} → {size}`)
         return
@@ -568,15 +684,86 @@ local function watchSize()
     stopProcess(`restart after resize {from} -> {size}`, false)
 end
 
-local function onSessionsUpdated()
+local function maybeAutoStart()
+    if cfg("start_mode") == "manual" or autoSuppressed or not ready then return end
+    if proc ~= nil or queued ~= nil or pendingResume ~= nil or #sessions == 0 then return end
+    if noctalia.nowMs() < autoRetryAt then return end
+    local session = chooseSession(nil)
+    if session == nil then return end
+    log(`auto-starting replay buffer (auto_session = {cfg("auto_session") or "last_character"})`)
+    startCaptureOn("replay", session)
+end
+
+-- The recorded session has closed: follow the next one, wait for the client
+-- to come back, or stop.
+local function onRecordedSessionClosed()
+    local mode = proc.mode
+    local closedId = proc.sessionId
+    local follow = cfg("follow_next_session") ~= false
+    local nextSession = if follow then chooseSession(closedId) else nil
+
+    if nextSession ~= nil then
+        if mode == "replay" then
+            log(`recorded session closed; following {describe(nextSession)}`)
+            queued = { mode = "replay", sessionId = nextSession.id }
+            stopProcess("recorded session closed", false)
+        else
+            -- A recording belongs to one character; save it. Auto mode then
+            -- starts the replay buffer on the next session.
+            stopProcess("recorded session closed", true)
+        end
+    elseif #sessions == 0 then
+        local grace = math.clamp(math.floor(tonumber(cfg("stop_grace")) or 5), 0, 120)
+        log(`last session closed; stopping in {grace}s unless a client comes back`)
+        pendingResume = { mode = mode, untilMs = noctalia.nowMs() + grace * 1000 }
+    else
+        stopProcess("recorded session closed", true)
+    end
+end
+
+-- Runs every tick while waiting for a client to come back.
+local function superviseResume()
+    if pendingResume == nil then return end
+    if #sessions > 0 then
+        local session = chooseSession(nil)
+        local mode = pendingResume.mode
+        pendingResume = nil
+        if session ~= nil then
+            log(`client came back; resuming {mode} on {describe(session)}`)
+            startCaptureOn(mode, session)
+        end
+        return
+    end
+    if noctalia.nowMs() >= pendingResume.untilMs then
+        local mode = pendingResume.mode
+        pendingResume = nil
+        log("no RuneLite session came back; stopping")
+        if proc ~= nil then
+            stopProcess("no RuneLite session left", true)
+        elseif mode == "replay" then
+            noctalia.notify(tr("notify.replay-stopped"))
+        end
+    end
+end
+
+local function onSessionsUpdated(appeared)
+    if #appeared > 0 and autoSuppressed and pendingResume == nil then
+        log("new session appeared; automatic start allowed again")
+        autoSuppressed = false
+        autoFailures = 0
+        autoRetryAt = 0
+    end
     if queued ~= nil and findSession(queued.sessionId) == nil then
         log("queued start dropped: its session closed")
         queued = nil
     end
-    if proc ~= nil and not proc.orphan and state ~= "stopping" and findSession(proc.sessionId) == nil then
-        stopProcess("recorded session closed", true)
+    if proc ~= nil and not proc.orphan and state ~= "stopping" and pendingResume == nil
+        and findSession(proc.sessionId) == nil then
+        onRecordedSessionClosed()
     end
+    superviseResume()
     watchSize()
+    maybeAutoStart()
 end
 
 local function poll()
@@ -596,10 +783,10 @@ local function poll()
         end
         if list == nil then return end
 
-        diffSessions(sessions, list)
+        local appeared = diffSessions(sessions, list)
         sessions = list
         nextPollAt = noctalia.nowMs() + (if #sessions > 0 then POLL_ACTIVE_MS else POLL_IDLE_MS)
-        onSessionsUpdated()
+        onSessionsUpdated(appeared)
         publishStatus()
     end)
 end
@@ -643,6 +830,7 @@ local function initialize()
         return
     end
 
+    lastCharacter = loadLastCharacter()
     adoptOrphan()
 
     -- Recording needs the runelite-gsr symlink. A failed picker install only
@@ -668,6 +856,8 @@ function update()
     if not available then return end
     picker.tick()
     superviseProcess()
+    superviseResume()
+    maybeAutoStart()
     if noctalia.nowMs() >= nextPollAt then
         poll()
     end
@@ -696,6 +886,8 @@ function onIpc(event, payload)
         saveReplay()
     elseif event == "record-toggle" then
         if effectiveMode() == "record" then stopCapture("record") else startCapture("record", arg) end
+    elseif event == "select" then
+        selectSession(arg)
     elseif event == "setup-picker" then
         local ok, msg = picker.setup(dataDir)
         if ok then
